@@ -6,25 +6,14 @@ import numpy as np
 import re
 from datetime import datetime
 
-# --- 1. CRITICAL DIAGNOSTIC IMPORT ---
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-    import plotly
-    plotly_loaded = True
-    import_error = None
-except Exception as e:
-    plotly_loaded = False
-    import_error = str(e)
-
-# --- 2. PAGE CONFIG ---
+# --- 1. PAGE CONFIG ---
 st.set_page_config(
     page_title="Kyrix | Intelligence Command",
     page_icon="🛡️",
     layout="wide"
 )
 
-# --- 3. LUXURY DARK THEME CSS ---
+# --- 2. LUXURY DARK THEME CSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #0F172A; } 
@@ -43,45 +32,37 @@ st.markdown("""
     .section-header {
         font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;
         padding: 12px 20px; border-radius: 8px 8px 0 0; margin-top: 25px;
-        border: 1px solid #475569;
+        border: 1px solid #475569; border-bottom: none;
     }
     .dynamic-banner { background: linear-gradient(90deg, #1E293B 0%, #334155 100%); color: #CBD5E1 !important; }
     .special-banner { background: linear-gradient(90deg, #1E40AF 0%, #3B82F6 100%); color: #FFFFFF !important; }
-    
-    .data-card { background-color: #1E293B; padding: 16px; border: 1px solid #334155; border-top: none; }
-    .label-text { font-size: 10px; color: #94A3B8; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
-    .value-text { font-size: 15px; color: #FFFFFF; font-weight: 500; }
-    
-    /* Highlighted value for harmonized intelligence */
+    .data-card { 
+        background-color: #111827; padding: 14px; 
+        border: 1px solid #1F2937; border-bottom: 1px solid #374151;
+    }
+    .label-text { font-size: 10px; color: #64748B; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
+    .value-text { font-size: 14px; color: #F8FAFC; font-weight: 500; }
     .priority-value { color: #F59E0B !important; font-weight: 700; font-family: 'Courier New', monospace; }
-
+    
     [data-testid="stSidebar"] { background-color: #020617 !important; border-right: 1px solid #1E293B; }
     .stTabs [aria-selected="true"] { background-color: #3B82F6 !important; color: #FFFFFF !important; }
-    
     .stDownloadButton button {
-        background-color: #F59E0B !important;
-        color: #0F172A !important;
-        font-weight: 700 !important;
-        border: none !important;
-        width: 100%;
-        margin-top: 30px;
+        background-color: #F59E0B !important; color: #0F172A !important;
+        font-weight: 700 !important; border: none !important; width: 100%; margin-top: 30px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. UTILITY: PHONE HARMONIZER ENGINE ---
+# --- 3. UTILITIES ---
 def harmonize_phone_strict(val):
     if pd.isna(val) or str(val).strip() == "": return "—"
-    # Remove all non-numeric characters
     clean_num = re.sub(r'\D', '', str(val))
-    # Handle common UAE prefixes
     if clean_num.startswith("00971"): clean_num = clean_num[2:]
     elif clean_num.startswith("0"): clean_num = clean_num[1:]
-    # Ensure it starts with 971
     if not clean_num.startswith("971"): clean_num = "971" + clean_num
     return f"+{clean_num}"
 
-# --- 5. DATA ENGINE ---
+# --- 4. DATA ENGINE ---
 @st.cache_data
 def load_data():
     files = glob.glob("*.csv")
@@ -111,12 +92,13 @@ def generate_dossier_text(row, group_map, all_groups):
         report += "-"*20 + "\n"
         group_cols = [c for c, g in group_map.items() if g == group]
         for col in group_cols:
-            if col in row: report += f"{col}: {row[col]}\n"
+            if col in row and pd.notna(row[col]) and str(row[col]).strip() not in ["nan", ""]:
+                report += f"{col}: {row[col]}\n"
         report += "\n"
     report += "="*50 + "\nEND OF DOSSIER"
     return report
 
-# --- 6. APP LOGIC ---
+# --- 5. APP LOGIC ---
 if "auth" not in st.session_state: st.session_state.auth = False
 if not st.session_state.auth:
     st.write("<br><br><br>", unsafe_allow_html=True)
@@ -127,9 +109,7 @@ if not st.session_state.auth:
         st.markdown("<h2>KYRIX ACCESS</h2>", unsafe_allow_html=True)
         key = st.text_input("SECURITY KEY", type="password")
         if st.button("AUTHORIZE"):
-            if key == "Kyrix2024":
-                st.session_state.auth = True
-                st.rerun()
+            if key == "Kyrix2024": st.session_state.auth = True; st.rerun()
             else: st.error("Unauthorized Access")
         st.markdown('</div>', unsafe_allow_html=True)
 else:
@@ -140,15 +120,12 @@ else:
             st.markdown("### COMMAND FILTERS")
             scol = st.selectbox("Search Field", df.columns, index=1 if len(df.columns) > 1 else 0)
             query = st.text_input("Enter Keywords...")
-            with st.expander("🛠 SYSTEM DATA MAP"):
-                st.write(list(df.columns))
-            st.write("---")
-            st.caption("KYRIX COMMAND CENTER V12.7")
+            st.caption("KYRIX COMMAND CENTER V12.8")
 
         mask = df[scol].astype(str).str.contains(query, case=False, na=False)
         res = df[mask]
         st.markdown(f'<div class="metric-badge">● {len(res)} ACTIVE AGENTS IDENTIFIED</div>', unsafe_allow_html=True)
-
+        
         tab_db, tab_map, tab_analytics = st.tabs(["📋 DATABASE", "📍 LIVE NETWORK MAP", "📈 ANALYTICS"])
 
         with tab_db:
@@ -161,41 +138,46 @@ else:
                     choice = st.selectbox("Expand Intelligence Profile:", res['Firm Name'].unique())
                     row = res[res['Firm Name'] == choice].iloc[0]
                 with d2:
-                    dossier_content = generate_dossier_text(row, group_map, all_groups)
-                    st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_content, file_name=f"Kyrix_Dossier_{choice}.txt")
+                    dossier_txt = generate_dossier_text(row, group_map, all_groups)
+                    st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_txt, file_name=f"Kyrix_{choice}.txt")
 
-                # Mapping logic for special Enriched placement
+                # Mapping for Priority placement
                 addr_col = next((c for c in df.columns if "address" in c.lower() and "license" in c.lower()), None)
                 phone_col = next((c for c in df.columns if "harmonized" in c.lower() or "phone" in c.lower()), None)
+                
+                # Ensure Team/Title/Email are handled
+                team_cols = [c for c in df.columns if any(k in c.lower() for k in ["team member", "title", "email"])]
 
                 col_left, col_right = st.columns(2)
                 for idx, group_name in enumerate(all_groups):
                     target_col = col_left if idx % 2 == 0 else col_right
-                    with target_col:
-                        is_enriched = "Enriched" in group_name
-                        banner_class = "special-banner" if is_enriched else "dynamic-banner"
-                        st.markdown(f'<div class="section-header {banner_class}">{group_name}</div>', unsafe_allow_html=True)
-                        
-                        group_cols = [c for c, g in group_map.items() if g == group_name]
-                        for col in group_cols:
-                            # If it's the special field in the enriched section, we handle it separately below
-                            if is_enriched and col in [addr_col, phone_col]:
-                                continue
-                                
-                            if col in row and "Unnamed" not in col:
-                                val = row[col] if pd.notna(row[col]) else "—"
-                                # Raw data follows original format
-                                st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
-                        
-                        # Apply strict formatting ONLY to Enriched Data section
-                        if is_enriched:
-                            if addr_col and addr_col in row:
-                                val = row[addr_col] if pd.notna(row[addr_col]) else "—"
-                                st.markdown(f"<div class='data-card' style='border-left: 3px solid #F59E0B;'><div class='label-text'>{addr_col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
-                            if phone_col and phone_col in row:
-                                raw_phone = row[phone_col]
-                                harmonized = harmonize_phone_strict(raw_phone)
-                                st.markdown(f"<div class='data-card' style='border-left: 3px solid #F59E0B;'><div class='label-text'>{phone_col} (HARMONIZED)</div><div class='value-text priority-value'>{harmonized}</div></div>", unsafe_allow_html=True)
+                    group_cols = [c for c, g in group_map.items() if g == group_name]
+                    
+                    # Logic: Only show the group header if there is data
+                    has_data = any(pd.notna(row[c]) and str(row[c]).strip() not in ["nan", "—", ""] for c in group_cols if c in row)
 
-        with tab_map:
-            st.info("Network Map Visualizing Active Nodes...")
+                    if has_data:
+                        with target_col:
+                            is_enriched = "Enriched" in group_name
+                            banner_class = "special-banner" if is_enriched else "dynamic-banner"
+                            st.markdown(f'<div class="section-header {banner_class}">{group_name}</div>', unsafe_allow_html=True)
+                            
+                            for col in group_cols:
+                                # Skip priority fields to append them at bottom of Enriched
+                                if is_enriched and col in [addr_col, phone_col]:
+                                    continue
+                                
+                                if col in row and "Unnamed" not in col:
+                                    val = str(row[col]).strip()
+                                    if val not in ["nan", "—", ""]:
+                                        # Extra highlight for Team Member names
+                                        val_style = "font-weight: 700; color: #3B82F6;" if "team member" in col.lower() else ""
+                                        st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text' style='{val_style}'>{val}</div></div>", unsafe_allow_html=True)
+                            
+                            # Priority Enriched Fields (Address & Harmonized Phone)
+                            if is_enriched:
+                                if addr_col and addr_col in row and str(row[addr_col]).strip() not in ["nan", ""]:
+                                    st.markdown(f"<div class='data-card' style='border-left: 4px solid #3B82F6;'><div class='label-text'>{addr_col}</div><div class='value-text'>{row[addr_col]}</div></div>", unsafe_allow_html=True)
+                                if phone_col and phone_col in row:
+                                    h_phone = harmonize_phone_strict(row[phone_col])
+                                    st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{phone_col} (HARMONIZED)</div><div class='value-text priority-value'>{h_phone}</div></div>", unsafe_allow_html=True)
