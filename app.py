@@ -39,7 +39,7 @@ st.markdown("""
     }
     .label-text { font-size: 9px; color: #64748B; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
     .value-text { font-size: 13px; color: #F8FAFC; font-weight: 500; line-height: 1.4; }
-    .priority-value { color: #F59E0B !important; font-weight: 700; }
+    .priority-value { color: #F59E0B !important; font-weight: 700; font-family: 'Courier New', monospace; }
     
     [data-testid="stSidebar"] { background-color: #020617 !important; border-right: 1px solid #1E293B; }
     .stDownloadButton button {
@@ -62,7 +62,6 @@ def generate_dossier_text(row, group_map, all_groups):
     report = "KYRIX INTELLIGENCE COMMAND | DOSSIER EXPORT\n"
     report += f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     report += "="*50 + "\n\n"
-    
     for group in all_groups:
         report += f"[{group.upper()}]\n"
         report += "-"*20 + "\n"
@@ -70,12 +69,9 @@ def generate_dossier_text(row, group_map, all_groups):
         for col in cols:
             if col in row:
                 val = str(row[col]) if pd.notna(row[col]) else "—"
-                # Apply phone harmonization in text export too
-                if col == "Harmonized Phone Number":
-                    val = harmonize_phone_strict(row[col])
+                if col == "Harmonized Phone Number": val = harmonize_phone_strict(row[col])
                 report += f"{col}: {val}\n"
         report += "\n"
-    
     report += "="*50 + "\nEND OF DOSSIER"
     return str(report)
 
@@ -85,7 +81,6 @@ def load_data():
     path = "Data Structure - Registered Agents in UAE (Kyrix Intangible) - Enriched Data 2.0.csv"
     if not os.path.exists(path): return None, None, []
     
-    # Read Group headers and Column headers
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
@@ -104,7 +99,6 @@ def load_data():
 if "auth" not in st.session_state: st.session_state.auth = False
 
 if not st.session_state.auth:
-    # Auth section (Proportional Logo)
     st.write("<br><br><br>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
     with col2:
@@ -116,7 +110,6 @@ if not st.session_state.auth:
             else: st.error("Unauthorized Access")
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # Main Dashboard Logo (Proportional)
     if os.path.exists("logo.png"):
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         st.image("logo.png", width=220)
@@ -140,7 +133,6 @@ else:
         tab_db, tab_analytics = st.tabs(["📋 MASTER DATABASE", "📈 ANALYTICS"])
 
         with tab_db:
-            # RESTORED TABLE
             st.markdown(f'<div class="metric-badge">● {len(res)} ACTIVE AGENTS IDENTIFIED</div>', unsafe_allow_html=True)
             st.dataframe(res, use_container_width=True, hide_index=True)
             
@@ -156,7 +148,6 @@ else:
                     dossier_content = generate_dossier_text(row, group_map, all_groups)
                     st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_content, file_name=f"Kyrix_{choice.replace(' ','_')}.txt", mime="text/plain")
 
-                # UI GRID - Restoring Enriched Priority Fields
                 col_left, col_right = st.columns(2)
                 for idx, group_name in enumerate(all_groups):
                     target_col = col_left if idx % 2 == 0 else col_right
@@ -164,21 +155,28 @@ else:
                         is_enriched = "Enriched" in group_name
                         st.markdown(f'<div class="section-header {"special-banner" if is_enriched else "dynamic-banner"}">{group_name}</div>', unsafe_allow_html=True)
                         
-                        cols_in_group = [c for c, g in group_map.items() if g == group_name]
-                        for col in cols_in_group:
-                            if "Unnamed" in col: continue
-                            if col in row:
-                                val = row[col] if pd.notna(row[col]) else "—"
-                                
-                                # Process Harmonized Phone and License Address
-                                text_style = "value-text"
-                                if col == "Harmonized Phone Number":
-                                    val = harmonize_phone_strict(val)
-                                    text_style = "value-text priority-value"
-                                
-                                st.markdown(f"""
-                                    <div class='data-card'>
-                                        <div class='label-text'>{col}</div>
-                                        <div class='{text_style}'>{val}</div>
-                                    </div>
-                                """, unsafe_allow_html=True)
+                        # Filter columns for this group
+                        group_cols = [c for c, g in group_map.items() if g == group_name]
+                        
+                        # FORCED DISPLAY: If this is the Enriched Data section, ensure these two are included
+                        if is_enriched:
+                            priority_fields = ["Harmonized Phone Number", "Address from License"]
+                            for pf in priority_fields:
+                                if pf in row and pf not in group_cols:
+                                    group_cols.insert(0, pf) # Inject them if they aren't already grouped here
+
+                        for col in group_cols:
+                            if "Unnamed" in col or col not in row: continue
+                            val = row[col] if pd.notna(row[col]) else "—"
+                            
+                            style = "value-text"
+                            if col == "Harmonized Phone Number":
+                                val = harmonize_phone_strict(val)
+                                style = "value-text priority-value"
+                            
+                            st.markdown(f"""
+                                <div class='data-card'>
+                                    <div class='label-text'>{col}</div>
+                                    <div class='{style}'>{val}</div>
+                                </div>
+                            """, unsafe_allow_html=True)
