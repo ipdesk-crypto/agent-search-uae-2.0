@@ -53,7 +53,6 @@ st.markdown("""
     [data-testid="stSidebar"] { background-color: #020617 !important; border-right: 1px solid #1E293B; }
     .stTabs [aria-selected="true"] { background-color: #3B82F6 !important; color: #FFFFFF !important; }
     
-    /* Download Button Styling */
     .stDownloadButton button {
         background-color: #F59E0B !important;
         color: #0F172A !important;
@@ -146,7 +145,7 @@ else:
             scol = st.selectbox("Search Field", df.columns, index=1 if len(df.columns) > 1 else 0)
             query = st.text_input("Enter Keywords...")
             st.write("---")
-            st.caption("KYRIX COMMAND CENTER V12.1")
+            st.caption("KYRIX COMMAND CENTER V12.2")
 
         mask = df[scol].astype(str).str.contains(query, case=False, na=False)
         res = df[mask]
@@ -159,7 +158,6 @@ else:
             
             if not res.empty:
                 st.markdown("---")
-                # Header with Download Button
                 d1, d2 = st.columns([3, 1])
                 with d1:
                     st.markdown("### 🔍 COMPREHENSIVE PROFILE DOSSIER")
@@ -178,16 +176,31 @@ else:
                     )
 
                 col_left, col_right = st.columns(2)
+                
+                # Identify special fields for placement
+                special_fields = ["Address of License", "Harmonized Phone Number"]
+
                 for idx, group_name in enumerate(all_groups):
                     target_col = col_left if idx % 2 == 0 else col_right
                     with target_col:
                         banner_class = "special-banner" if "Enriched" in group_name else "dynamic-banner"
                         st.markdown(f'<div class="section-header {banner_class}">{group_name}</div>', unsafe_allow_html=True)
+                        
                         group_cols = [c for c, g in group_map.items() if g == group_name]
+                        
+                        # Display regular columns for this group
                         for col in group_cols:
-                            if col in row and "Unnamed" not in col:
+                            # Skip the special fields if we are in the Enriched group, we'll append them at the end
+                            if col in row and "Unnamed" not in col and col not in special_fields:
                                 val = row[col] if pd.notna(row[col]) else "—"
                                 st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
+                        
+                        # IF this is the ENRICHED section, append the specific fields at the bottom
+                        if "Enriched" in group_name:
+                            for spec in special_fields:
+                                if spec in row:
+                                    val = row[spec] if pd.notna(row[spec]) else "—"
+                                    st.markdown(f"<div class='data-card' style='border-left: 3px solid #F59E0B;'><div class='label-text'>{spec}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
 
         with tab_map:
             if plotly_loaded:
@@ -200,7 +213,7 @@ else:
                     fig.update_layout(mapbox_style="carto-darkmatter", margin={"r":0,"t":0,"l":0,"b":0})
                     st.plotly_chart(fig, use_container_width=True)
             else:
-                st.error(f"Plotly load failed. Error: {import_error}")
+                st.error(f"Plotly load failed.")
 
         with tab_analytics:
             if plotly_loaded:
