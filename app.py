@@ -56,7 +56,9 @@ st.markdown("""
 # --- 3. UTILITIES ---
 def harmonize_phone_strict(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).lower() == "nan": return "—"
+    # Remove all non-digits
     clean_num = re.sub(r'\D', '', str(val))
+    # Standardize UAE Prefix
     if clean_num.startswith("00971"): clean_num = clean_num[2:]
     elif clean_num.startswith("0"): clean_num = clean_num[1:]
     if not clean_num.startswith("971"): clean_num = "971" + clean_num
@@ -65,11 +67,12 @@ def harmonize_phone_strict(val):
 # --- 4. DATA ENGINE ---
 @st.cache_data
 def load_data():
-    files = glob.glob("*.csv")
-    if not files: return None, None, []
-    path = files[0]
+    # Use your specific file name
+    path = "Data Structure - Registered Agents in UAE (Kyrix Intangible) - Enriched Data 2.0.csv"
+    if not os.path.exists(path):
+        return None, None, []
     
-    # Read headers
+    # Read Grouping row (Row 2) and Headers (Row 3)
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     h_row = pd.read_csv(path, skiprows=2, nrows=1, header=None).iloc[0].tolist()
     
@@ -78,15 +81,17 @@ def load_data():
         g = str(g_row[i]) if i < len(g_row) and pd.notna(g_row[i]) else None
         if g and g.strip() and g.lower() != 'nan': current_group = g.strip()
         if current_group not in all_groups: all_groups.append(current_group)
+        
         h_clean = str(h).strip()
-        if h_clean and h_clean != 'nan': group_map[h_clean] = current_group
+        # Ensure we keep the name exactly as it is in CSV
+        if h_clean: group_map[h_clean] = current_group
     
-    # Read Data
+    # Load Main Data
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
     df = df[df['Firm Name'].notna()].copy()
     
-    # Cleaning internal headers from rows
+    # Filter out secondary table headers if present in rows
     df = df[~df['Firm Name'].str.contains("Firm Name|ENRICHED|CONTACTS|ADDITIONAL|DATA", na=False, case=False)]
     return df, group_map, all_groups
 
@@ -107,11 +112,11 @@ def generate_dossier_text(row, group_map, all_groups):
 
 # --- 5. APP LOGIC ---
 if "auth" not in st.session_state: st.session_state.auth = False
+
 if not st.session_state.auth:
     st.write("<br><br><br>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
     with col2:
-        if os.path.exists("logo.png"): st.image("logo.png", width=220)
         st.markdown('<div style="background:#1E293B; padding:50px; border-radius:12px; border:1px solid #334155; text-align:center;">', unsafe_allow_html=True)
         st.markdown("<h2>KYRIX ACCESS</h2>", unsafe_allow_html=True)
         key = st.text_input("SECURITY KEY", type="password")
@@ -123,11 +128,10 @@ else:
     df, group_map, all_groups = load_data()
     if df is not None:
         with st.sidebar:
-            if os.path.exists("logo.png"): st.image("logo.png")
             st.markdown("### COMMAND FILTERS")
-            scol = st.selectbox("Search Field", df.columns, index=1 if len(df.columns) > 1 else 0)
-            query = st.text_input("Enter Keywords...")
-            st.caption("KYRIX COMMAND CENTER V12.9")
+            scol = st.selectbox("Search Field", df.columns, index=1)
+            query = st.text_input("Search Agents...")
+            st.caption("KYRIX COMMAND CENTER V13.5")
 
         mask = df[scol].astype(str).str.contains(query, case=False, na=False)
         res = df[mask]
@@ -136,7 +140,6 @@ else:
         tab_db, tab_map, tab_analytics = st.tabs(["📋 DATABASE", "📍 LIVE NETWORK MAP", "📈 ANALYTICS"])
 
         with tab_db:
-            # Table now shows ALL columns by default
             st.dataframe(res, use_container_width=True, hide_index=True)
             
             if not res.empty:
@@ -144,15 +147,15 @@ else:
                 d1, d2 = st.columns([3, 1])
                 with d1:
                     st.markdown("### 🔍 COMPREHENSIVE PROFILE DOSSIER")
-                    choice = st.selectbox("Expand Intelligence Profile:", res['Firm Name'].unique())
+                    choice = st.selectbox("Select Profile:", res['Firm Name'].unique())
                     row = res[res['Firm Name'] == choice].iloc[0]
                 with d2:
                     dossier_txt = generate_dossier_text(row, group_map, all_groups)
                     st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_txt, file_name=f"Kyrix_{choice}.txt")
 
-                # Smart Map for Special Formatting
-                addr_col = next((c for c in df.columns if "address" in c.lower() and "license" in c.lower()), None)
-                phone_col = next((c for c in df.columns if "harmonized" in c.lower() or "phone" in c.lower()), None)
+                # COLUMN BLACKLIST FOR RAW (Move to Enriched)
+                spec_addr = "Address from License"
+                spec_phone = "Harmonized Phone Number"
 
                 col_left, col_right = st.columns(2)
                 for idx, group_name in enumerate(all_groups):
@@ -164,22 +167,24 @@ else:
                         
                         group_cols = [c for c, g in group_map.items() if g == group_name]
                         for col in group_cols:
-                            # Skip priority ones for Enriched section bottom placement
-                            if is_enriched and col in [addr_col, phone_col]:
+                            # Blacklist from Raw/General to keep Enriched clean
+                            if col in [spec_addr, spec_phone]:
                                 continue
+                            
+                            # Show all columns, even if Unnamed/Empty
+                            if "Unnamed" in col: continue # Skip technical CSV errors
                             
                             val = row[col] if pd.notna(row[col]) else "—"
                             st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
                         
-                        # PRIORITY FIELDS AT BOTTOM OF ENRICHED
+                        # PRIORITY ENRICHED SECTION INJECTION
                         if is_enriched:
-                            if addr_col and addr_col in row:
-                                val = row[addr_col] if pd.notna(row[addr_col]) else "—"
-                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #3B82F6;'><div class='label-text'>{addr_col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
-                            if phone_col and phone_col in row:
-                                raw_phone = row[phone_col]
-                                harmonized = harmonize_phone_strict(raw_phone)
-                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{phone_col} (HARMONIZED)</div><div class='value-text priority-value'>{harmonized}</div></div>", unsafe_allow_html=True)
+                            if spec_addr in df.columns:
+                                val = row[spec_addr] if pd.notna(row[spec_addr]) else "—"
+                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #3B82F6;'><div class='label-text'>{spec_addr} (PRIORITY)</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
+                            if spec_phone in df.columns:
+                                harmonized = harmonize_phone_strict(row[spec_phone])
+                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{spec_phone} (STRICT)</div><div class='value-text priority-value'>{harmonized}</div></div>", unsafe_allow_html=True)
 
         with tab_map:
-            st.info("System Ready for Geospatial Integration.")
+            st.info("System Ready for Network Mapping.")
