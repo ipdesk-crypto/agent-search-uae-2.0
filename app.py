@@ -17,6 +17,12 @@ st.set_page_config(
 st.markdown("""
     <style>
     .stApp { background-color: #0F172A; } 
+    /* Center Logo Container */
+    .logo-container {
+        display: flex;
+        justify-content: center;
+        padding: 20px 0;
+    }
     h1, h2, h3, h4, p, span, label, .stMarkdown { color: #F1F5F9 !important; font-family: 'Inter', sans-serif; }
     .metric-badge {
         background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
@@ -56,9 +62,7 @@ st.markdown("""
 # --- 3. UTILITIES ---
 def harmonize_phone_strict(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).lower() == "nan": return "—"
-    # Remove all non-digits
     clean_num = re.sub(r'\D', '', str(val))
-    # Standardize UAE Prefix
     if clean_num.startswith("00971"): clean_num = clean_num[2:]
     elif clean_num.startswith("0"): clean_num = clean_num[1:]
     if not clean_num.startswith("971"): clean_num = "971" + clean_num
@@ -67,12 +71,9 @@ def harmonize_phone_strict(val):
 # --- 4. DATA ENGINE ---
 @st.cache_data
 def load_data():
-    # Use your specific file name
     path = "Data Structure - Registered Agents in UAE (Kyrix Intangible) - Enriched Data 2.0.csv"
-    if not os.path.exists(path):
-        return None, None, []
+    if not os.path.exists(path): return None, None, []
     
-    # Read Grouping row (Row 2) and Headers (Row 3)
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     h_row = pd.read_csv(path, skiprows=2, nrows=1, header=None).iloc[0].tolist()
     
@@ -81,17 +82,12 @@ def load_data():
         g = str(g_row[i]) if i < len(g_row) and pd.notna(g_row[i]) else None
         if g and g.strip() and g.lower() != 'nan': current_group = g.strip()
         if current_group not in all_groups: all_groups.append(current_group)
-        
         h_clean = str(h).strip()
-        # Ensure we keep the name exactly as it is in CSV
         if h_clean: group_map[h_clean] = current_group
     
-    # Load Main Data
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
     df = df[df['Firm Name'].notna()].copy()
-    
-    # Filter out secondary table headers if present in rows
     df = df[~df['Firm Name'].str.contains("Firm Name|ENRICHED|CONTACTS|ADDITIONAL|DATA", na=False, case=False)]
     return df, group_map, all_groups
 
@@ -117,6 +113,7 @@ if not st.session_state.auth:
     st.write("<br><br><br>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
     with col2:
+        if os.path.exists("logo.png"): st.image("logo.png", width=220)
         st.markdown('<div style="background:#1E293B; padding:50px; border-radius:12px; border:1px solid #334155; text-align:center;">', unsafe_allow_html=True)
         st.markdown("<h2>KYRIX ACCESS</h2>", unsafe_allow_html=True)
         key = st.text_input("SECURITY KEY", type="password")
@@ -125,16 +122,25 @@ if not st.session_state.auth:
             else: st.error("Unauthorized Access")
         st.markdown('</div>', unsafe_allow_html=True)
 else:
+    # --- LOGO ON MAIN PAGE ---
+    if os.path.exists("logo.png"):
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.image("logo.png", width=300)
+        st.markdown('</div>', unsafe_allow_html=True)
+
     df, group_map, all_groups = load_data()
     if df is not None:
         with st.sidebar:
+            if os.path.exists("logo.png"): st.image("logo.png")
             st.markdown("### COMMAND FILTERS")
             scol = st.selectbox("Search Field", df.columns, index=1)
             query = st.text_input("Search Agents...")
-            st.caption("KYRIX COMMAND CENTER V13.5")
+            st.caption("KYRIX COMMAND CENTER V13.6")
 
         mask = df[scol].astype(str).str.contains(query, case=False, na=False)
         res = df[mask]
+        
+        # UI Metrics
         st.markdown(f'<div class="metric-badge">● {len(res)} ACTIVE AGENTS IDENTIFIED</div>', unsafe_allow_html=True)
         
         tab_db, tab_map, tab_analytics = st.tabs(["📋 DATABASE", "📍 LIVE NETWORK MAP", "📈 ANALYTICS"])
@@ -153,7 +159,6 @@ else:
                     dossier_txt = generate_dossier_text(row, group_map, all_groups)
                     st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_txt, file_name=f"Kyrix_{choice}.txt")
 
-                # COLUMN BLACKLIST FOR RAW (Move to Enriched)
                 spec_addr = "Address from License"
                 spec_phone = "Harmonized Phone Number"
 
@@ -167,24 +172,16 @@ else:
                         
                         group_cols = [c for c, g in group_map.items() if g == group_name]
                         for col in group_cols:
-                            # Blacklist from Raw/General to keep Enriched clean
-                            if col in [spec_addr, spec_phone]:
-                                continue
-                            
-                            # Show all columns, even if Unnamed/Empty
-                            if "Unnamed" in col: continue # Skip technical CSV errors
+                            if col in [spec_addr, spec_phone]: continue
+                            if "Unnamed" in col: continue
                             
                             val = row[col] if pd.notna(row[col]) else "—"
                             st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
                         
-                        # PRIORITY ENRICHED SECTION INJECTION
                         if is_enriched:
                             if spec_addr in df.columns:
                                 val = row[spec_addr] if pd.notna(row[spec_addr]) else "—"
-                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #3B82F6;'><div class='label-text'>{spec_addr} (PRIORITY)</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
+                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #3B82F6;'><div class='label-text'>{spec_addr}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
                             if spec_phone in df.columns:
                                 harmonized = harmonize_phone_strict(row[spec_phone])
-                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{spec_phone} (STRICT)</div><div class='value-text priority-value'>{harmonized}</div></div>", unsafe_allow_html=True)
-
-        with tab_map:
-            st.info("System Ready for Network Mapping.")
+                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{spec_phone}</div><div class='value-text priority-value'>{harmonized}</div></div>", unsafe_allow_html=True)
