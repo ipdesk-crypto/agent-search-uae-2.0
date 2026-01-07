@@ -63,6 +63,15 @@ def harmonize_phone_strict(val):
     if not clean_num.startswith("971"): clean_num = "971" + clean_num
     return f"+{clean_num}"
 
+def format_rating_stars(v):
+    v_str = str(v).lower()
+    if '5' in v_str: return "⭐⭐⭐⭐⭐"
+    if '4' in v_str: return "⭐⭐⭐⭐"
+    if '3' in v_str: return "⭐⭐⭐"
+    if '2' in v_str: return "⭐⭐"
+    if '1' in v_str: return "⭐"
+    return "—"
+
 # --- 4. DATA ENGINE ---
 @st.cache_data
 def load_data():
@@ -73,7 +82,7 @@ def load_data():
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     h_row = pd.read_csv(path, skiprows=2, nrows=1, header=None).iloc[0].tolist()
     
-    # Load Main Data first to get the ACTUAL column names pandas uses
+    # Load Main Data to get ACTUAL column names pandas uses
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
     actual_cols = df.columns.tolist()
@@ -84,12 +93,16 @@ def load_data():
         if g and g.strip() and g.lower() != 'nan': current_group = g.strip()
         if current_group not in all_groups: all_groups.append(current_group)
         
-        # Use the actual column name from the dataframe to avoid KeyErrors
         if i < len(actual_cols):
             group_map[actual_cols[i]] = current_group
     
     df = df[df['Firm Name'].notna()].copy()
     df = df[~df['Firm Name'].str.contains("Firm Name|ENRICHED|CONTACTS|ADDITIONAL|DATA", na=False, case=False)]
+    
+    # APPLY 1-5 STAR RATING SYSTEM
+    if 'Rating' in df.columns:
+        df['Rating'] = df['Rating'].apply(format_rating_stars)
+        
     return df, group_map, all_groups
 
 def generate_dossier_text(row, group_map, all_groups):
@@ -97,13 +110,11 @@ def generate_dossier_text(row, group_map, all_groups):
     report += f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     report += "="*50 + "\n\n"
     
-    # Iterate through all groups and all columns mapped to them
     for group in all_groups:
         report += f"[{group.upper()}]\n"
         report += "-"*20 + "\n"
         group_cols = [c for c, g in group_map.items() if g == group]
         for col in group_cols:
-            # FIX: Check if column exists in the row series before accessing
             if col in row:
                 val = row[col] if pd.notna(row[col]) else "—"
                 report += f"{col}: {val}\n"
@@ -140,7 +151,7 @@ else:
             st.markdown("### COMMAND FILTERS")
             scol = st.selectbox("Search Field", df.columns, index=1)
             query = st.text_input("Search Agents...")
-            st.caption("KYRIX COMMAND CENTER V13.7")
+            st.caption("KYRIX COMMAND CENTER V13.8")
 
         mask = df[scol].astype(str).str.contains(query, case=False, na=False)
         res = df[mask]
@@ -159,7 +170,6 @@ else:
                     choice = st.selectbox("Select Profile:", res['Firm Name'].unique())
                     row = res[res['Firm Name'] == choice].iloc[0]
                 with d2:
-                    # Logic updated to handle all columns safely
                     dossier_txt = generate_dossier_text(row, group_map, all_groups)
                     st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_txt, file_name=f"Kyrix_{choice}.txt")
 
