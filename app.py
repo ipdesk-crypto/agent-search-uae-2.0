@@ -15,13 +15,10 @@ st.set_page_config(
 st.markdown("""
     <style>
     .stApp { background-color: #0F172A; } 
-    /* Proportional Logo Container */
-    .logo-container { 
-        display: flex; 
-        justify-content: center; 
-        padding: 10px 0 30px 0; 
-    }
+    .logo-container { display: flex; justify-content: center; padding: 10px 0 20px 0; }
     h1, h2, h3, h4, p, span, label, .stMarkdown { color: #F1F5F9 !important; font-family: 'Inter', sans-serif; }
+    
+    /* Metrics and Headers */
     .metric-badge {
         background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
         color: #F59E0B !important;
@@ -36,7 +33,7 @@ st.markdown("""
     .dynamic-banner { background: linear-gradient(90deg, #1E293B 0%, #334155 100%); color: #CBD5E1 !important; }
     .special-banner { background: linear-gradient(90deg, #1E40AF 0%, #3B82F6 100%); color: #FFFFFF !important; }
     
-    /* Standardized Card Layout */
+    /* Data Cards */
     .data-card { 
         background-color: #111827; padding: 12px; 
         border: 1px solid #1F2937; border-bottom: 1px solid #374151;
@@ -49,8 +46,10 @@ st.markdown("""
     [data-testid="stSidebar"] { background-color: #020617 !important; border-right: 1px solid #1E293B; }
     .stDownloadButton button {
         background-color: #F59E0B !important; color: #0F172A !important;
-        font-weight: 700 !important; border: none !important; width: 100%; margin-top: 20px;
+        font-weight: 700 !important; border: none !important; width: 100%;
     }
+    /* Fix for DataFrame visibility */
+    .stDataFrame { background-color: #111827; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -85,15 +84,19 @@ def generate_dossier_text(row, group_map, all_groups):
 def load_data():
     path = "Data Structure - Registered Agents in UAE (Kyrix Intangible) - Enriched Data 2.0.csv"
     if not os.path.exists(path): return None, None, []
+    
+    # Headers logic to capture Enriched vs Raw groups
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
+    
     current_group, group_map, all_groups = "General Info", {}, []
     for i, col_name in enumerate(df.columns):
         g = str(g_row[i]) if i < len(g_row) and pd.notna(g_row[i]) else None
         if g and g.strip() and g.lower() != 'nan': current_group = g.strip()
         if current_group not in all_groups: all_groups.append(current_group)
         group_map[col_name] = current_group
+    
     df = df[df['Firm Name'].notna()].copy()
     return df, group_map, all_groups
 
@@ -101,11 +104,11 @@ def load_data():
 if "auth" not in st.session_state: st.session_state.auth = False
 
 if not st.session_state.auth:
-    # Auth section (unchanged)
+    # (Authorization Screen - Proportional Logo)
     st.write("<br><br><br>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
     with col2:
-        if os.path.exists("logo.png"): st.image("logo.png", width=180) # Proportional login logo
+        if os.path.exists("logo.png"): st.image("logo.png", width=180)
         st.markdown('<div style="background:#1E293B; padding:40px; border-radius:12px; border:1px solid #334155; text-align:center;"><h2>KYRIX ACCESS</h2>', unsafe_allow_html=True)
         key = st.text_input("SECURITY KEY", type="password")
         if st.button("AUTHORIZE"):
@@ -113,10 +116,10 @@ if not st.session_state.auth:
             else: st.error("Unauthorized Access")
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # Main Proportional Logo
+    # Main Header Logo
     if os.path.exists("logo.png"):
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.image("logo.png", width=220) # Proportional main logo size
+        st.image("logo.png", width=220)
         st.markdown('</div>', unsafe_allow_html=True)
 
     df, group_map, all_groups = load_data()
@@ -127,6 +130,7 @@ else:
             scol = st.selectbox("Choose Field", df.columns, index=1) if mode == "Field Filter" else None
             query = st.text_input("Type keyword", placeholder="Enter terms...")
 
+        # Search Logic
         res = df
         if query:
             if mode == "Global Intelligence":
@@ -134,19 +138,30 @@ else:
             else:
                 res = df[df[scol].astype(str).str.contains(query, case=False, na=False)]
 
-        tab_db, _, _ = st.tabs(["📋 DATABASE", "📍 MAP", "📈 ANALYTICS"])
+        st.markdown(f'<div class="metric-badge">● {len(res)} ACTIVE AGENTS IDENTIFIED</div>', unsafe_allow_html=True)
+
+        # Tabs
+        tab_db, tab_analytics = st.tabs(["📋 MASTER DATABASE", "📈 ANALYTICS"])
 
         with tab_db:
+            # 1. THE RESTORED TABLE (Shows all data or filtered data)
+            st.markdown("### 🏛️ INTELLIGENCE REGISTRY")
+            st.dataframe(res, use_container_width=True, hide_index=True)
+            
+            # 2. INDIVIDUAL DOSSIER VIEW
             if not res.empty:
-                st.markdown(f'<div class="metric-badge">● {len(res)} AGENTS IDENTIFIED</div>', unsafe_allow_html=True)
+                st.markdown("---")
+                st.markdown("### 🔍 PROFILE DEEP-DIVE")
                 d1, d2 = st.columns([3, 1])
                 with d1:
-                    choice = st.selectbox("Select Profile:", res['Firm Name'].unique())
+                    choice = st.selectbox("Select Agent to Inspect:", res['Firm Name'].unique())
                     row = res[res['Firm Name'] == choice].iloc[0]
                 with d2:
+                    st.write("<br>", unsafe_allow_html=True)
                     dossier_content = generate_dossier_text(row, group_map, all_groups)
                     st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_content, file_name=f"Kyrix_{choice}.txt", mime="text/plain")
 
+                # Data Grid Layout
                 col_left, col_right = st.columns(2)
                 for idx, group_name in enumerate(all_groups):
                     target_col = col_left if idx % 2 == 0 else col_right
@@ -154,13 +169,13 @@ else:
                         is_enriched = "Enriched" in group_name
                         st.markdown(f'<div class="section-header {"special-banner" if is_enriched else "dynamic-banner"}">{group_name}</div>', unsafe_allow_html=True)
                         
-                        group_cols = [c for c, g in group_map.items() if g == group_name]
-                        for col in group_cols:
+                        cols_in_group = [c for c, g in group_map.items() if g == group_name]
+                        for col in cols_in_group:
                             if "Unnamed" in col: continue
                             if col in row:
                                 val = row[col] if pd.notna(row[col]) else "—"
                                 
-                                # Priority field processing
+                                # Priority fields logic (Restore Address and Phone)
                                 text_style = "value-text"
                                 if col == "Harmonized Phone Number":
                                     val = harmonize_phone_strict(val)
