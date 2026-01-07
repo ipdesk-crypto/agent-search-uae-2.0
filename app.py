@@ -55,7 +55,7 @@ st.markdown("""
 
 # --- 3. UTILITIES ---
 def harmonize_phone_strict(val):
-    if pd.isna(val) or str(val).strip() == "": return "—"
+    if pd.isna(val) or str(val).strip() == "" or str(val).lower() == "nan": return "—"
     clean_num = re.sub(r'\D', '', str(val))
     if clean_num.startswith("00971"): clean_num = clean_num[2:]
     elif clean_num.startswith("0"): clean_num = clean_num[1:]
@@ -68,8 +68,11 @@ def load_data():
     files = glob.glob("*.csv")
     if not files: return None, None, []
     path = files[0]
+    
+    # Read headers
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     h_row = pd.read_csv(path, skiprows=2, nrows=1, header=None).iloc[0].tolist()
+    
     current_group, group_map, all_groups = "General Info", {}, []
     for i, h in enumerate(h_row):
         g = str(g_row[i]) if i < len(g_row) and pd.notna(g_row[i]) else None
@@ -77,9 +80,13 @@ def load_data():
         if current_group not in all_groups: all_groups.append(current_group)
         h_clean = str(h).strip()
         if h_clean and h_clean != 'nan': group_map[h_clean] = current_group
+    
+    # Read Data
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
     df = df[df['Firm Name'].notna()].copy()
+    
+    # Cleaning internal headers from rows
     df = df[~df['Firm Name'].str.contains("Firm Name|ENRICHED|CONTACTS|ADDITIONAL|DATA", na=False, case=False)]
     return df, group_map, all_groups
 
@@ -92,8 +99,8 @@ def generate_dossier_text(row, group_map, all_groups):
         report += "-"*20 + "\n"
         group_cols = [c for c, g in group_map.items() if g == group]
         for col in group_cols:
-            if col in row and pd.notna(row[col]) and str(row[col]).strip() not in ["nan", ""]:
-                report += f"{col}: {row[col]}\n"
+            val = row[col] if pd.notna(row[col]) else "—"
+            report += f"{col}: {val}\n"
         report += "\n"
     report += "="*50 + "\nEND OF DOSSIER"
     return report
@@ -120,7 +127,7 @@ else:
             st.markdown("### COMMAND FILTERS")
             scol = st.selectbox("Search Field", df.columns, index=1 if len(df.columns) > 1 else 0)
             query = st.text_input("Enter Keywords...")
-            st.caption("KYRIX COMMAND CENTER V12.8")
+            st.caption("KYRIX COMMAND CENTER V12.9")
 
         mask = df[scol].astype(str).str.contains(query, case=False, na=False)
         res = df[mask]
@@ -129,7 +136,9 @@ else:
         tab_db, tab_map, tab_analytics = st.tabs(["📋 DATABASE", "📍 LIVE NETWORK MAP", "📈 ANALYTICS"])
 
         with tab_db:
+            # Table now shows ALL columns by default
             st.dataframe(res, use_container_width=True, hide_index=True)
+            
             if not res.empty:
                 st.markdown("---")
                 d1, d2 = st.columns([3, 1])
@@ -141,43 +150,36 @@ else:
                     dossier_txt = generate_dossier_text(row, group_map, all_groups)
                     st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_txt, file_name=f"Kyrix_{choice}.txt")
 
-                # Mapping for Priority placement
+                # Smart Map for Special Formatting
                 addr_col = next((c for c in df.columns if "address" in c.lower() and "license" in c.lower()), None)
                 phone_col = next((c for c in df.columns if "harmonized" in c.lower() or "phone" in c.lower()), None)
-                
-                # Ensure Team/Title/Email are handled
-                team_cols = [c for c in df.columns if any(k in c.lower() for k in ["team member", "title", "email"])]
 
                 col_left, col_right = st.columns(2)
                 for idx, group_name in enumerate(all_groups):
                     target_col = col_left if idx % 2 == 0 else col_right
-                    group_cols = [c for c, g in group_map.items() if g == group_name]
-                    
-                    # Logic: Only show the group header if there is data
-                    has_data = any(pd.notna(row[c]) and str(row[c]).strip() not in ["nan", "—", ""] for c in group_cols if c in row)
+                    with target_col:
+                        is_enriched = "Enriched" in group_name
+                        banner_class = "special-banner" if is_enriched else "dynamic-banner"
+                        st.markdown(f'<div class="section-header {banner_class}">{group_name}</div>', unsafe_allow_html=True)
+                        
+                        group_cols = [c for c, g in group_map.items() if g == group_name]
+                        for col in group_cols:
+                            # Skip priority ones for Enriched section bottom placement
+                            if is_enriched and col in [addr_col, phone_col]:
+                                continue
+                            
+                            val = row[col] if pd.notna(row[col]) else "—"
+                            st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
+                        
+                        # PRIORITY FIELDS AT BOTTOM OF ENRICHED
+                        if is_enriched:
+                            if addr_col and addr_col in row:
+                                val = row[addr_col] if pd.notna(row[addr_col]) else "—"
+                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #3B82F6;'><div class='label-text'>{addr_col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
+                            if phone_col and phone_col in row:
+                                raw_phone = row[phone_col]
+                                harmonized = harmonize_phone_strict(raw_phone)
+                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{phone_col} (HARMONIZED)</div><div class='value-text priority-value'>{harmonized}</div></div>", unsafe_allow_html=True)
 
-                    if has_data:
-                        with target_col:
-                            is_enriched = "Enriched" in group_name
-                            banner_class = "special-banner" if is_enriched else "dynamic-banner"
-                            st.markdown(f'<div class="section-header {banner_class}">{group_name}</div>', unsafe_allow_html=True)
-                            
-                            for col in group_cols:
-                                # Skip priority fields to append them at bottom of Enriched
-                                if is_enriched and col in [addr_col, phone_col]:
-                                    continue
-                                
-                                if col in row and "Unnamed" not in col:
-                                    val = str(row[col]).strip()
-                                    if val not in ["nan", "—", ""]:
-                                        # Extra highlight for Team Member names
-                                        val_style = "font-weight: 700; color: #3B82F6;" if "team member" in col.lower() else ""
-                                        st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text' style='{val_style}'>{val}</div></div>", unsafe_allow_html=True)
-                            
-                            # Priority Enriched Fields (Address & Harmonized Phone)
-                            if is_enriched:
-                                if addr_col and addr_col in row and str(row[addr_col]).strip() not in ["nan", ""]:
-                                    st.markdown(f"<div class='data-card' style='border-left: 4px solid #3B82F6;'><div class='label-text'>{addr_col}</div><div class='value-text'>{row[addr_col]}</div></div>", unsafe_allow_html=True)
-                                if phone_col and phone_col in row:
-                                    h_phone = harmonize_phone_strict(row[phone_col])
-                                    st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{phone_col} (HARMONIZED)</div><div class='value-text priority-value'>{h_phone}</div></div>", unsafe_allow_html=True)
+        with tab_map:
+            st.info("System Ready for Geospatial Integration.")
