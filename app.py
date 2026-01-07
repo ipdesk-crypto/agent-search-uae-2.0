@@ -5,6 +5,7 @@ import glob
 import numpy as np
 import re
 from datetime import datetime
+from fpdf import FPDF
 
 # --- 1. PAGE CONFIG ---
 st.set_page_config(
@@ -54,73 +55,83 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. UTILITIES ---
-def harmonize_phone_strict(val):
-    if pd.isna(val) or str(val).strip() == "" or str(val).lower() == "nan": return "—"
-    clean_num = re.sub(r'\D', '', str(val))
-    if clean_num.startswith("00971"): clean_num = clean_num[2:]
-    elif clean_num.startswith("0"): clean_num = clean_num[1:]
-    if not clean_num.startswith("971"): clean_num = "971" + clean_num
-    return f"+{clean_num}"
+# --- 3. PDF ENGINE ---
+class KyrixPDF(FPDF):
+    def header(self):
+        if os.path.exists("logo.png"):
+            self.image("logo.png", 10, 8, 33)
+        self.set_font('Arial', 'B', 15)
+        self.set_text_color(30, 64, 175) # Dark Blue
+        self.cell(80)
+        self.cell(30, 10, 'INTELLIGENCE DOSSIER', 0, 0, 'C')
+        self.ln(20)
 
-def format_rating_stars(v):
-    v_str = str(v).lower()
-    if '5' in v_str: return "⭐⭐⭐⭐⭐"
-    if '4' in v_str: return "⭐⭐⭐⭐"
-    if '3' in v_str: return "⭐⭐⭐"
-    if '2' in v_str: return "⭐⭐"
-    if '1' in v_str: return "⭐"
-    return "—"
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.set_text_color(128)
+        self.cell(0, 10, f'Kyrix Intangible - Page {self.page_no()} - {datetime.now().strftime("%Y-%m-%d")}', 0, 0, 'C')
 
-# --- 4. DATA ENGINE ---
+def create_pdf(row, group_map, all_groups):
+    pdf = KyrixPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    for group in all_groups:
+        # Styling for headers
+        is_enriched = "Enriched" in group
+        if is_enriched:
+            pdf.set_fill_color(30, 64, 175) # Blue
+            pdf.set_text_color(255, 255, 255)
+        else:
+            pdf.set_fill_color(30, 41, 59) # Dark Slate
+            pdf.set_text_color(241, 245, 249)
+            
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 10, f" {group.upper()}", 0, 1, 'L', True)
+        pdf.ln(2)
+        
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font('Arial', '', 10)
+        
+        group_cols = [c for c, g in group_map.items() if g == group]
+        for col in group_cols:
+            if col in row:
+                val = str(row[col]) if pd.notna(row[col]) else "—"
+                # Multi-line handling for notes
+                pdf.set_font('Arial', 'B', 9)
+                pdf.cell(50, 7, f"{col}:", 0, 0)
+                pdf.set_font('Arial', '', 9)
+                pdf.multi_cell(0, 7, val)
+        pdf.ln(5)
+        
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- 4. DATA ENGINE (Utilities from V13.9) ---
 @st.cache_data
 def load_data():
     path = "Data Structure - Registered Agents in UAE (Kyrix Intangible) - Enriched Data 2.0.csv"
     if not os.path.exists(path): return None, None, []
-    
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     h_row = pd.read_csv(path, skiprows=2, nrows=1, header=None).iloc[0].tolist()
-    
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
     actual_cols = df.columns.tolist()
-    
     current_group, group_map, all_groups = "General Info", {}, []
     for i, h in enumerate(h_row):
         g = str(g_row[i]) if i < len(g_row) and pd.notna(g_row[i]) else None
         if g and g.strip() and g.lower() != 'nan': current_group = g.strip()
         if current_group not in all_groups: all_groups.append(current_group)
-        if i < len(actual_cols):
-            group_map[actual_cols[i]] = current_group
-    
+        if i < len(actual_cols): group_map[actual_cols[i]] = current_group
     df = df[df['Firm Name'].notna()].copy()
     df = df[~df['Firm Name'].str.contains("Firm Name|ENRICHED|CONTACTS|ADDITIONAL|DATA", na=False, case=False)]
-    
-    if 'Rating' in df.columns:
-        df['Rating'] = df['Rating'].apply(format_rating_stars)
-        
     return df, group_map, all_groups
-
-def generate_dossier_text(row, group_map, all_groups):
-    report = f"KYRIX INTELLIGENCE COMMAND | DOSSIER EXPORT\n"
-    report += f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-    report += "="*50 + "\n\n"
-    for group in all_groups:
-        report += f"[{group.upper()}]\n"
-        report += "-"*20 + "\n"
-        group_cols = [c for c, g in group_map.items() if g == group]
-        for col in group_cols:
-            if col in row:
-                val = row[col] if pd.notna(row[col]) else "—"
-                report += f"{col}: {val}\n"
-        report += "\n"
-    report += "="*50 + "\nEND OF DOSSIER"
-    return report
 
 # --- 5. APP LOGIC ---
 if "auth" not in st.session_state: st.session_state.auth = False
 
 if not st.session_state.auth:
+    # (Authorization Screen)
     st.write("<br><br><br>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
     with col2:
@@ -133,7 +144,6 @@ if not st.session_state.auth:
             else: st.error("Unauthorized Access")
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # KYRIX LOGO MAIN PAGE
     if os.path.exists("logo.png"):
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         st.image("logo.png", width=300)
@@ -142,38 +152,26 @@ else:
     df, group_map, all_groups = load_data()
     if df is not None:
         with st.sidebar:
-            if os.path.exists("logo.png"): st.image("logo.png")
             st.markdown("### COMMAND FILTERS")
-            
-            # 1. New Text-Free Global Search Option
             search_mode = st.radio("Search Mode", ["Global Intelligence", "Field Filter"])
-            
-            if search_mode == "Field Filter":
-                scol = st.selectbox("Choose Field", df.columns, index=1)
-            else:
-                scol = None
-            
+            scol = st.selectbox("Choose Field", df.columns, index=1) if search_mode == "Field Filter" else None
             query = st.text_input("Type keyword", placeholder="Enter terms...")
-            st.caption("KYRIX COMMAND CENTER V13.9")
+            st.caption("KYRIX COMMAND CENTER V14.0")
 
-        # 2. Search Logic Update
+        # Filtering Logic
         if query:
             if search_mode == "Global Intelligence":
-                # Scans all columns for the keyword
                 mask = df.apply(lambda row: row.astype(str).str.contains(query, case=False).any(), axis=1)
             else:
                 mask = df[scol].astype(str).str.contains(query, case=False, na=False)
             res = df[mask]
-        else:
-            res = df
+        else: res = df
 
         st.markdown(f'<div class="metric-badge">● {len(res)} ACTIVE AGENTS IDENTIFIED</div>', unsafe_allow_html=True)
-        
         tab_db, tab_map, tab_analytics = st.tabs(["📋 DATABASE", "📍 LIVE NETWORK MAP", "📈 ANALYTICS"])
 
         with tab_db:
             st.dataframe(res, use_container_width=True, hide_index=True)
-            
             if not res.empty:
                 st.markdown("---")
                 d1, d2 = st.columns([3, 1])
@@ -182,12 +180,16 @@ else:
                     choice = st.selectbox("Select Profile:", res['Firm Name'].unique())
                     row = res[res['Firm Name'] == choice].iloc[0]
                 with d2:
-                    dossier_txt = generate_dossier_text(row, group_map, all_groups)
-                    st.download_button(label="📥 DOWNLOAD DOSSIER", data=dossier_txt, file_name=f"Kyrix_{choice}.txt")
+                    # PDF GENERATION TRIGGER
+                    pdf_bytes = create_pdf(row, group_map, all_groups)
+                    st.download_button(
+                        label="📄 DOWNLOAD PDF DOSSIER",
+                        data=pdf_bytes,
+                        file_name=f"Kyrix_Dossier_{choice.replace(' ', '_')}.pdf",
+                        mime="application/pdf"
+                    )
 
-                spec_addr = "Address from License"
-                spec_phone = "Harmonized Phone Number"
-
+                # UI Display (Data Cards)
                 col_left, col_right = st.columns(2)
                 for idx, group_name in enumerate(all_groups):
                     target_col = col_left if idx % 2 == 0 else col_right
@@ -195,19 +197,9 @@ else:
                         is_enriched = "Enriched" in group_name
                         banner_class = "special-banner" if is_enriched else "dynamic-banner"
                         st.markdown(f'<div class="section-header {banner_class}">{group_name}</div>', unsafe_allow_html=True)
-                        
                         group_cols = [c for c, g in group_map.items() if g == group_name]
                         for col in group_cols:
-                            if col in [spec_addr, spec_phone]: continue
-                            if "Unnamed" in col: continue
+                            if "Unnamed" in col or col in ["Address from License", "Harmonized Phone Number"]: continue
                             if col in row:
                                 val = row[col] if pd.notna(row[col]) else "—"
                                 st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
-                        
-                        if is_enriched:
-                            if spec_addr in row.index:
-                                val = row[spec_addr] if pd.notna(row[spec_addr]) else "—"
-                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #3B82F6;'><div class='label-text'>{spec_addr}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
-                            if spec_phone in row.index:
-                                harmonized = harmonize_phone_strict(row[spec_phone])
-                                st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{spec_phone}</div><div class='value-text priority-value'>{harmonized}</div></div>", unsafe_allow_html=True)
