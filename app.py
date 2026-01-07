@@ -65,29 +65,27 @@ def format_rating_stars(v):
     return "—"
 
 def generate_dossier_text(row, group_map, all_groups):
-    report = f"KYRIX INTELLIGENCE COMMAND | DOSSIER EXPORT\n"
+    report = "KYRIX INTELLIGENCE COMMAND | DOSSIER EXPORT\n"
     report += f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     report += "="*50 + "\n\n"
     
-    # Standard Groups
     for group in all_groups:
         report += f"[{group.upper()}]\n"
         report += "-"*20 + "\n"
         group_cols = [c for c, g in group_map.items() if g == group]
         for col in group_cols:
             if col in row and col != "Explanation":
-                val = row[col] if pd.notna(row[col]) else "—"
+                val = str(row[col]) if pd.notna(row[col]) else "—"
                 report += f"{col}: {val}\n"
         report += "\n"
     
-    # Forced Explanation at end of text file
+    # Force Explanation at the bottom of the text
     report += "[ANALYSIS & EXPLANATION]\n"
     report += "-"*20 + "\n"
-    exp_val = row["Explanation"] if "Explanation" in row and pd.notna(row["Explanation"]) else "—"
+    exp_val = str(row["Explanation"]) if "Explanation" in row and pd.notna(row["Explanation"]) else "No data provided in source."
     report += f"{exp_val}\n\n"
-    
     report += "="*50 + "\nEND OF DOSSIER"
-    return report
+    return str(report) # Forced string return
 
 # --- 4. DATA ENGINE ---
 @st.cache_data
@@ -157,9 +155,14 @@ else:
                     choice = st.selectbox("Select Profile:", res['Firm Name'].unique())
                     row = res[res['Firm Name'] == choice].iloc[0]
                 with d2:
-                    # REVERTED TO TEXT DOSSIER
-                    dossier_txt = generate_dossier_text(row, group_map, all_groups)
-                    st.download_button(label="📥 DOWNLOAD DOSSIER (.TXT)", data=dossier_txt, file_name=f"Kyrix_{choice}.txt")
+                    # FIXED DATA PASSING FOR DOWNLOAD BUTTON
+                    dossier_content = generate_dossier_text(row, group_map, all_groups)
+                    st.download_button(
+                        label="📥 DOWNLOAD DOSSIER (.TXT)",
+                        data=dossier_content,
+                        file_name=f"Kyrix_{choice.replace(' ', '_')}.txt",
+                        mime="text/plain"
+                    )
 
                 col_left, col_right = st.columns(2)
                 for idx, group_name in enumerate(all_groups):
@@ -174,8 +177,8 @@ else:
 
                 # FORCED EXPLANATION IN UI
                 st.markdown('<div class="section-header" style="background:#F59E0B; color:#0F172A !important;">EXPLANATION</div>', unsafe_allow_html=True)
-                exp_text = row["Explanation"] if "Explanation" in row and pd.notna(row["Explanation"]) else "—"
-                st.markdown(f"<div class='data-card' style='border-left: 5px solid #F59E0B;'><div class='value-text'>{exp_text}</div></div>", unsafe_allow_html=True)
+                ui_exp = row["Explanation"] if "Explanation" in row and pd.notna(row["Explanation"]) else "—"
+                st.markdown(f"<div class='data-card' style='border-left: 5px solid #F59E0B;'><div class='value-text'>{ui_exp}</div></div>", unsafe_allow_html=True)
 
                 # EXPLANATION AT THE VERY END OF UI
                 st.markdown('<div class="section-header" style="background:#F59E0B; color:#0F172A !important;">EXPLANATION</div>', unsafe_allow_html=True)
