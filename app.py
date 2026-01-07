@@ -78,11 +78,9 @@ def load_data():
     path = "Data Structure - Registered Agents in UAE (Kyrix Intangible) - Enriched Data 2.0.csv"
     if not os.path.exists(path): return None, None, []
     
-    # Read Grouping row and Headers
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     h_row = pd.read_csv(path, skiprows=2, nrows=1, header=None).iloc[0].tolist()
     
-    # Load Main Data to get ACTUAL column names pandas uses
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
     actual_cols = df.columns.tolist()
@@ -92,14 +90,12 @@ def load_data():
         g = str(g_row[i]) if i < len(g_row) and pd.notna(g_row[i]) else None
         if g and g.strip() and g.lower() != 'nan': current_group = g.strip()
         if current_group not in all_groups: all_groups.append(current_group)
-        
         if i < len(actual_cols):
             group_map[actual_cols[i]] = current_group
     
     df = df[df['Firm Name'].notna()].copy()
     df = df[~df['Firm Name'].str.contains("Firm Name|ENRICHED|CONTACTS|ADDITIONAL|DATA", na=False, case=False)]
     
-    # APPLY 1-5 STAR RATING SYSTEM
     if 'Rating' in df.columns:
         df['Rating'] = df['Rating'].apply(format_rating_stars)
         
@@ -109,7 +105,6 @@ def generate_dossier_text(row, group_map, all_groups):
     report = f"KYRIX INTELLIGENCE COMMAND | DOSSIER EXPORT\n"
     report += f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     report += "="*50 + "\n\n"
-    
     for group in all_groups:
         report += f"[{group.upper()}]\n"
         report += "-"*20 + "\n"
@@ -149,12 +144,29 @@ else:
         with st.sidebar:
             if os.path.exists("logo.png"): st.image("logo.png")
             st.markdown("### COMMAND FILTERS")
-            scol = st.selectbox("Search Field", df.columns, index=1)
-            query = st.text_input("Search Agents...")
-            st.caption("KYRIX COMMAND CENTER V13.8")
+            
+            # 1. New Text-Free Global Search Option
+            search_mode = st.radio("Search Mode", ["Global Intelligence", "Field Filter"])
+            
+            if search_mode == "Field Filter":
+                scol = st.selectbox("Choose Field", df.columns, index=1)
+            else:
+                scol = None
+            
+            query = st.text_input("Type keyword", placeholder="Enter terms...")
+            st.caption("KYRIX COMMAND CENTER V13.9")
 
-        mask = df[scol].astype(str).str.contains(query, case=False, na=False)
-        res = df[mask]
+        # 2. Search Logic Update
+        if query:
+            if search_mode == "Global Intelligence":
+                # Scans all columns for the keyword
+                mask = df.apply(lambda row: row.astype(str).str.contains(query, case=False).any(), axis=1)
+            else:
+                mask = df[scol].astype(str).str.contains(query, case=False, na=False)
+            res = df[mask]
+        else:
+            res = df
+
         st.markdown(f'<div class="metric-badge">● {len(res)} ACTIVE AGENTS IDENTIFIED</div>', unsafe_allow_html=True)
         
         tab_db, tab_map, tab_analytics = st.tabs(["📋 DATABASE", "📍 LIVE NETWORK MAP", "📈 ANALYTICS"])
@@ -188,7 +200,6 @@ else:
                         for col in group_cols:
                             if col in [spec_addr, spec_phone]: continue
                             if "Unnamed" in col: continue
-                            
                             if col in row:
                                 val = row[col] if pd.notna(row[col]) else "—"
                                 st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
