@@ -28,6 +28,7 @@ st.markdown("""
     <style>
     .stApp { background-color: #0F172A; } 
     h1, h2, h3, h4, p, span, label, .stMarkdown { color: #F1F5F9 !important; font-family: 'Inter', sans-serif; }
+    
     .metric-badge {
         background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
         color: #F59E0B !important;
@@ -39,17 +40,33 @@ st.markdown("""
         display: inline-block;
         margin-bottom: 20px;
     }
+
+    /* SECTION HEADERS */
     .section-header {
         font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;
         padding: 12px 20px; border-radius: 8px 8px 0 0; margin-top: 25px;
         border: 1px solid #475569;
+        border-bottom: none;
     }
     .dynamic-banner { background: linear-gradient(90deg, #1E293B 0%, #334155 100%); color: #CBD5E1 !important; }
     .special-banner { background: linear-gradient(90deg, #1E40AF 0%, #3B82F6 100%); color: #FFFFFF !important; }
     
-    .data-card { background-color: #1E293B; padding: 16px; border: 1px solid #334155; border-top: none; }
-    .label-text { font-size: 10px; color: #94A3B8; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
-    .value-text { font-size: 15px; color: #FFFFFF; font-weight: 500; }
+    /* DATA CARD WITH BORDERS */
+    .data-card { 
+        background-color: #111827; 
+        padding: 14px; 
+        border: 1px solid #1F2937; 
+        border-bottom: 1px solid #374151; /* Defines the separation between items */
+        transition: all 0.3s ease;
+    }
+    .data-card:hover {
+        background-color: #1E293B;
+        border-color: #3B82F6;
+    }
+    .label-text { font-size: 10px; color: #64748B; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
+    .value-text { font-size: 14px; color: #F8FAFC; font-weight: 500; }
+    
+    /* SIDEBAR & TABS */
     [data-testid="stSidebar"] { background-color: #020617 !important; border-right: 1px solid #1E293B; }
     .stTabs [aria-selected="true"] { background-color: #3B82F6 !important; color: #FFFFFF !important; }
     
@@ -59,6 +76,7 @@ st.markdown("""
         font-weight: 700 !important;
         border: none !important;
         width: 100%;
+        margin-top: 30px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -70,7 +88,6 @@ def load_data():
     if not files: return None, None, []
     path = files[0]
 
-    # Detect headers and groups
     g_row = pd.read_csv(path, skiprows=1, nrows=1, header=None).iloc[0].tolist()
     h_row = pd.read_csv(path, skiprows=2, nrows=1, header=None).iloc[0].tolist()
     
@@ -93,14 +110,28 @@ def load_data():
     df = pd.read_csv(path, skiprows=2)
     df.columns = df.columns.str.strip()
     df = df[df['Firm Name'].notna()].copy()
-    
-    # Remove internal CSV title rows
     df = df[~df['Firm Name'].str.contains("Firm Name|ENRICHED|CONTACTS|ADDITIONAL|DATA", na=False, case=False)]
     
     if 'Rating' in df.columns:
         df['Rating'] = df['Rating'].astype(str).apply(lambda v: "⭐⭐⭐⭐⭐" if '5' in v else "⭐⭐⭐⭐" if '4' in v else "⭐⭐⭐" if '3' in v else "—")
 
     return df, group_map, all_groups
+
+def generate_dossier_text(row, group_map, all_groups):
+    report = f"KYRIX INTELLIGENCE COMMAND | DOSSIER EXPORT\n"
+    report += f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    report += "="*50 + "\n\n"
+    for group in all_groups:
+        report += f"[{group.upper()}]\n"
+        report += "-"*20 + "\n"
+        group_cols = [c for c, g in group_map.items() if g == group]
+        for col in group_cols:
+            val = str(row[col]).strip()
+            if col in row and val not in ["nan", "—", "", "None"]: 
+                report += f"{col}: {val}\n"
+        report += "\n"
+    report += "="*50 + "\nEND OF DOSSIER"
+    return report
 
 # --- 5. APP LOGIC ---
 if "auth" not in st.session_state: st.session_state.auth = False
@@ -129,14 +160,8 @@ else:
             st.markdown("### COMMAND FILTERS")
             scol = st.selectbox("Search Field", df.columns, index=1 if len(df.columns) > 1 else 0)
             query = st.text_input("Enter Keywords...")
-            
-            # --- INTERNAL DIAGNOSTIC ---
-            with st.expander("🛠 SYSTEM DATA MAP"):
-                st.write("All Detected Columns:")
-                st.write(list(df.columns))
-            
             st.write("---")
-            st.caption("KYRIX COMMAND CENTER V12.3")
+            st.caption("KYRIX COMMAND CENTER V12.5")
 
         mask = df[scol].astype(str).str.contains(query, case=False, na=False)
         res = df[mask]
@@ -149,41 +174,55 @@ else:
             
             if not res.empty:
                 st.markdown("---")
-                choice = st.selectbox("Expand Intelligence Profile:", res['Firm Name'].unique())
-                row = res[res['Firm Name'] == choice].iloc[0]
-
-                # --- SMART FIELD MAPPING ---
-                # This finds the columns even if the name isn't 100% exact
-                addr_col = next((c for c in df.columns if "address" in c.lower() and "license" in c.lower()), None)
-                phone_col = next((c for c in df.columns if "harmonized" in c.lower() or "phone" in c.lower() and "harmonized" in c.lower()), None)
+                d1, d2 = st.columns([3, 1])
+                with d1:
+                    st.markdown("### 🔍 COMPREHENSIVE PROFILE DOSSIER")
+                    choice = st.selectbox("Expand Intelligence Profile:", res['Firm Name'].unique())
+                    row = res[res['Firm Name'] == choice].iloc[0]
                 
-                special_field_keys = [addr_col, phone_col]
-                special_field_keys = [f for f in special_field_keys if f is not None]
+                with d2:
+                    dossier_content = generate_dossier_text(row, group_map, all_groups)
+                    st.download_button(
+                        label="📥 DOWNLOAD DOSSIER",
+                        data=dossier_content,
+                        file_name=f"Kyrix_Dossier_{choice.replace(' ', '_')}.txt",
+                        mime="text/plain"
+                    )
+
+                # Smart Mapping
+                addr_col = next((c for c in df.columns if "address" in c.lower() and "license" in c.lower()), None)
+                phone_col = next((c for c in df.columns if "harmonized" in c.lower() or ("phone" in c.lower() and "harmonized" in c.lower())), None)
+                special_field_keys = [f for f in [addr_col, phone_col] if f is not None]
 
                 col_left, col_right = st.columns(2)
                 for idx, group_name in enumerate(all_groups):
                     target_col = col_left if idx % 2 == 0 else col_right
-                    with target_col:
-                        banner_class = "special-banner" if "Enriched" in group_name else "dynamic-banner"
-                        st.markdown(f'<div class="section-header {banner_class}">{group_name}</div>', unsafe_allow_html=True)
-                        
-                        group_cols = [c for c, g in group_map.items() if g == group_name]
-                        
-                        # Render normal fields
-                        for col in group_cols:
-                            if col in row and col not in special_field_keys and "Unnamed" not in col:
-                                val = row[col] if pd.notna(row[col]) else "—"
-                                st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
-                        
-                        # Force "Address of License" and "Phone" to bottom of Enriched section
-                        if "Enriched" in group_name:
-                            for spec in special_field_keys:
-                                if spec in row:
-                                    val = row[spec] if pd.notna(row[spec]) else "—"
-                                    st.markdown(f"<div class='data-card' style='border-left: 3px solid #F59E0B;'><div class='label-text'>{spec} (PRIORITY)</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
+                    
+                    # Logic: Only show the group header if there is at least one non-empty field inside it
+                    group_cols = [c for c, g in group_map.items() if g == group_name]
+                    has_data = any(pd.notna(row[c]) and str(row[c]).strip() not in ["nan", "—", ""] for c in group_cols if c in row)
+
+                    if has_data:
+                        with target_col:
+                            banner_class = "special-banner" if "Enriched" in group_name else "dynamic-banner"
+                            st.markdown(f'<div class="section-header {banner_class}">{group_name}</div>', unsafe_allow_html=True)
+                            
+                            for col in group_cols:
+                                if col in row and col not in special_field_keys and "Unnamed" not in col:
+                                    val = str(row[col]).strip()
+                                    if val not in ["nan", "—", "None", ""]:
+                                        st.markdown(f"<div class='data-card'><div class='label-text'>{col}</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
+                            
+                            # Priority Fields at the bottom of Enriched
+                            if "Enriched" in group_name:
+                                for spec in special_field_keys:
+                                    if spec in row:
+                                        val = str(row[spec]).strip()
+                                        if val not in ["nan", "—", "None", ""]:
+                                            st.markdown(f"<div class='data-card' style='border-left: 4px solid #F59E0B;'><div class='label-text'>{spec} (PRIORITY)</div><div class='value-text'>{val}</div></div>", unsafe_allow_html=True)
 
         with tab_map:
-            # (Map code remains same as previous version)
-            st.info("Network Map Visualizing Active Nodes...")
-            # ... (plotly code)
+            st.info("Mapping Active Nodes...")
+
+# (End of script)
 
